@@ -1311,7 +1311,8 @@ export class EMStatic {
     dumpLayout(): string {
         let dump = "$ 1 " + this.windowWidth + " " + this.windowOffsetX + " 0 " +
             this.displayChooser.getSelectedIndex() + " " + this.brightnessBar.getValue() + " " +
-            this.lengthScale + " " + this.equipotentialBar.getValue() + "\n";
+            this.lengthScale + " " + this.equipotentialBar.getValue() + " " +
+            this.vectorDensityBar.getValue() + "\n";
         for (let i = 0; i !== this.dragObjects.length; i++)
             dump += this.dragObjects[i].dump() + "\n";
         return dump;
@@ -1350,6 +1351,9 @@ export class EMStatic {
                     this.lengthScale = parseFloat(st.nextToken());
                     try {
                         this.equipotentialBar.setValue(parseInt(st.nextToken()));
+                    } catch (e) { /* ignored */ }
+                    try {
+                        this.vectorDensityBar.setValue(parseInt(st.nextToken()));
                     } catch (e) { /* ignored */ }
                     continue;
                 }
