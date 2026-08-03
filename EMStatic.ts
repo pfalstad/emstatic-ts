@@ -1108,6 +1108,10 @@ export class EMStatic {
     }
 
     doCoordsLabel(): void {
+        if (this.displayChooser.getSelectedIndex() === EMStatic.DISP_3D) {
+            this.coordsLabel.style.display = "none";
+            return;
+        }
         if (this.calcLevel < 2000) {
             this.coordsLabel.textContent = "Calculating...";
             this.coordsLabel.style.display = "";
