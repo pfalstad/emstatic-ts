@@ -24,4 +24,5 @@ ripsim.init();
 
 window.addEventListener("resize", () => {
     ripsim.setCanvasSize();
+    ripsim.repaint();
 });

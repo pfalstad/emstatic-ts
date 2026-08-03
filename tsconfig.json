@@ -6,6 +6,7 @@
     "types": [],
     "sourceMap": true,
     "declaration": false,
+    "noEmit": true,
     "strict": true,
     "strictNullChecks": false,
     "strictPropertyInitialization": false,
