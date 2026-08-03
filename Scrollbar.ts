@@ -46,7 +46,6 @@ export class Scrollbar {
         this.element = document.createElement("div");
         this.canvas = document.createElement("canvas");
         this.canvas.style.width = this.widthPx + "px";
-        this.canvas.style.height = "40px";
         this.canvas.width = this.widthPx;
         this.canvas.height = Scrollbar.SCROLLHEIGHT;
         this.element.appendChild(this.canvas);

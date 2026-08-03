@@ -6,9 +6,34 @@ html, body {
     overflow: hidden;
 }
 
-body, select, button, input {
-    font-family: Arial, sans-serif;
+body, table td, select, button, input {
+    font-family: Arial Unicode MS, Arial, sans-serif;
     font-size: small;
+}
+
+pre {
+    font-family: "courier new", courier;
+    font-size: small;
+}
+
+body {
+    color: black;
+    background: #fff;
+    direction: ltr;
+}
+
+a, a:visited {
+    color: #0066cc;
+    text-decoration: none;
+}
+
+a:hover {
+    color: #0066cc;
+    text-decoration: underline;
+}
+
+select {
+    background: white;
 }
 
 #app {
