@@ -55,8 +55,8 @@ const MT_DIELECTRIC = 3;
 
     var shaderProgramMain, shaderProgramRelax, shaderProgramAcoustic, shaderProgramDraw, shaderProgramMode;
     var shaderProgramCopyRG, shaderProgramResidual, shaderProgramViewCharge, shaderProgramCalcCharge, shaderProgramSum;
-    var shaderProgramCopyRGB, shaderProgramScalarField;
-    var shaderProgramComputeEdgeWeights, shaderProgramRestrictEdgeWeights;
+    var shaderProgramCopyRGB, shaderProgramScalarField, shaderProgram3D, shaderProgramAdd, shaderProgramFieldVector;
+    var shaderProgramComputeEdgeWeights, shaderProgramRestrictEdgeWeights, shaderProgramEquip;
 
     function initShader(fs, vs, prefix) {
         var fragmentShader = getShader(gl, fs, prefix);
@@ -345,7 +345,7 @@ function isPowerOf2(value) {
     	if (!fullScreenVertexPositionBuffer)
     		fullScreenVertexPositionBuffer = gl.createBuffer();
     	gl.bindBuffer(gl.ARRAY_BUFFER, fullScreenVertexPositionBuffer);
-    	vertices = [
+    	var vertices = [
     	            -1, +1,
     	            +1, +1,
     	            -1, -1,
@@ -386,7 +386,7 @@ function isPowerOf2(value) {
     	screen3DTextureBuffer.itemSize = 2;
     	var texture3D = [];
     	gridRange = textureCoords[2]-textureCoords[0];
-    	for (i = 0; i <= gridSize3D; i++) {
+    	for (var i = 0; i <= gridSize3D; i++) {
     		texture3D.push(textureCoords[0],
     					   textureCoords[0]+gridRange*i/gridSize3D,
     					   textureCoords[0]+gridRange/gridSize3D,
@@ -1521,6 +1521,8 @@ function isPowerOf2(value) {
 
         mvPopMatrix();
     }
+
+    var potPixels;
 
     renderer.fetchPotentialPixels = function(s) {
         renderer.setDestination(s);
