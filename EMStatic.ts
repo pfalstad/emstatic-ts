@@ -46,7 +46,7 @@ import { HollowBox } from "./HollowBox";
 import { HollowEllipse } from "./HollowEllipse";
 import { QuadrupoleLens } from "./QuadrupoleLens";
 
-// the WebGL/multigrid renderer, vendored from emstatic.js (loaded as a classic <script>).
+// the WebGL/multigrid renderer, defined in renderer.js (loaded as a classic <script>).
 // `passCanvas` returns an object with all the drawing/solver callbacks used below.
 export let renderer: any = null;
 

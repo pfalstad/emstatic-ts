@@ -1578,8 +1578,8 @@ function isPowerOf2(value) {
         }
   
         gl.useProgram(shaderProgramDraw);
-        gl.vertexAttrib4f(shaderProgramDraw.colorAttribute, 1, 1, 1, 1);
-  
+        gl.vertexAttrib4f(shaderProgramDraw.colorAttribute, 0, 1, 0, 1);
+
         gl.bindBuffer(gl.ARRAY_BUFFER, sourceBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(coords), gl.STATIC_DRAW);
         gl.vertexAttribPointer(shaderProgramDraw.vertexPositionAttribute, sourceBuffer.itemSize, gl.FLOAT, false, 0, 0);
