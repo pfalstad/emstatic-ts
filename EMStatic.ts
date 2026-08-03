@@ -150,6 +150,8 @@ export class EMStatic {
     brightnessBar!: Scrollbar;
     equipotentialBar!: Scrollbar;
     vectorDensityBar!: Scrollbar;
+    equipotentialLabel!: HTMLElement;
+    vectorDensityLabel!: HTMLElement;
     dampcoef = 1;
     zoom3d = 1.2;
     mouseLocation: Point | null = null;
@@ -363,7 +365,7 @@ export class EMStatic {
         this.sidebarEl.appendChild(this.stoppedCheck.element);
 
         this.equipCheck = new Checkbox("Show Equipotentials", true);
-        this.equipCheck.addClickHandler(() => this.repaint());
+        this.equipCheck.addClickHandler(() => { this.updateScrollbarVisibility(); this.repaint(); });
         this.sidebarEl.appendChild(this.equipCheck.element);
 
         if (LoadFile.isSupported()) {
@@ -383,17 +385,18 @@ export class EMStatic {
         this.brightnessBar = new Scrollbar(Scrollbar.HORIZONTAL, 27, 1, 1, 2200, () => this.repaint());
         this.sidebarEl.appendChild(this.brightnessBar.element);
 
-        addLabel("Equipotential Count");
+        this.equipotentialLabel = addLabel("Equipotential Count");
         this.equipotentialBar = new Scrollbar(Scrollbar.HORIZONTAL, 27, 1, 1, 2200, () => this.repaint());
         this.sidebarEl.appendChild(this.equipotentialBar.element);
 
-        addLabel("Vector Density");
+        this.vectorDensityLabel = addLabel("Vector Density");
         this.vectorDensityBar = new Scrollbar(Scrollbar.HORIZONTAL, 60, 1, 20, 200, () => this.repaint());
         this.sidebarEl.appendChild(this.vectorDensityBar.element);
 
         this.brightnessBar.setWidth(this.verticalPanelWidth);
         this.equipotentialBar.setWidth(this.verticalPanelWidth);
         this.vectorDensityBar.setWidth(this.verticalPanelWidth);
+        this.updateScrollbarVisibility();
 
         this.createMenus();
 
@@ -1068,6 +1071,7 @@ export class EMStatic {
             case EMStatic.DISP_P:
                 EMStatic.displayScalar(src, rsrc, 0, true);
                 EMStatic.displayField(src, rsrc, brightMult, 0, 1, this.vectorDensityBar.getValue());
+                EMStatic.displayEquip(src, rsrc, equipMult);
                 break;
             case EMStatic.DISP_POLARIZATION_CHARGE:
                 EMStatic.displayScalarField(src, rsrc, 0, 0, 0, 0, brightMult);
@@ -1701,7 +1705,30 @@ export class EMStatic {
             this.doSetup();
         if (source === this.colorChooser)
             this.doColor();
+        if (source === this.displayChooser)
+            this.updateScrollbarVisibility();
         this.repaint();
+    }
+
+    // Vector Density only applies when field vectors are drawn (displayField); Equipotential
+    // Count only applies when equipotential lines are drawn (displayEquip, including in 3-D).
+    // Keep in sync with the switch in update().
+    updateScrollbarVisibility(): void {
+        const idx = this.displayChooser.getSelectedIndex();
+        const usesVectorDensity = idx === EMStatic.DISP_FIELD || idx === EMStatic.DISP_E_LINES ||
+            idx === EMStatic.DISP_D || idx === EMStatic.DISP_P ||
+            idx === EMStatic.DISP_E_RHO || idx === EMStatic.DISP_E_LINES_RHO ||
+            idx === EMStatic.DISP_E_POT || idx === EMStatic.DISP_E_LINES_POT;
+        const equipotentialApplies = idx === EMStatic.DISP_POT || idx === EMStatic.DISP_3D ||
+            idx === EMStatic.DISP_LINES || idx === EMStatic.DISP_FIELD || idx === EMStatic.DISP_E_LINES ||
+            idx === EMStatic.DISP_D || idx === EMStatic.DISP_P || idx === EMStatic.DISP_E_RHO ||
+            idx === EMStatic.DISP_E_LINES_RHO || idx === EMStatic.DISP_E_POT || idx === EMStatic.DISP_E_LINES_POT;
+        const usesEquipotential = equipotentialApplies && this.equipCheck.getState();
+        this.vectorDensityLabel.style.display = usesVectorDensity ? "" : "none";
+        this.vectorDensityBar.element.style.display = usesVectorDensity ? "" : "none";
+        this.equipCheck.element.style.display = equipotentialApplies ? "" : "none";
+        this.equipotentialLabel.style.display = usesEquipotential ? "" : "none";
+        this.equipotentialBar.element.style.display = usesEquipotential ? "" : "none";
     }
 
     // ==================== undo / redo / clipboard ====================
