@@ -40,7 +40,7 @@ export class AboutBox {
             `MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the ` +
             `GNU General Public License for more details.</p>` +
             `<p style="font-size:9px">For details of licensing see <a href="http://www.gnu.org/licenses/" target="_blank">http://www.gnu.org/licenses/</a>.</p>` +
-            `<p style="font-size:9px">Source code:<a href="https://github.com/pfalstad/emstatic" target="_blank">https://github.com/pfalstad/emstatic</a></p>`;
+            `<p style="font-size:9px">Source code:<a href="https://github.com/pfalstad/emstatic-ts" target="_blank">https://github.com/pfalstad/emstatic-ts</a></p>`;
         this.dialogEl.appendChild(vp);
 
         const okButton = document.createElement("button");
