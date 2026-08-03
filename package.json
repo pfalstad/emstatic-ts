@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "dist": "tsc && node dist.mjs",
     "preview": "vite preview"
   },
   "keywords": [],
