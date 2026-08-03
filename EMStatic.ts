@@ -1042,6 +1042,7 @@ export class EMStatic {
             case EMStatic.DISP_LINES:
                 lines = true;
                 EMStatic.displayScalar(src, rsrc, 0, true);
+                EMStatic.displayEquip(src, rsrc, equipMult);
                 break;
             case EMStatic.DISP_E_LINES:
                 lines = true;
