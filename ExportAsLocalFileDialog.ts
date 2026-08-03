@@ -18,7 +18,11 @@
 */
 
 export class ExportAsLocalFileDialog {
+    static lastFileName: string | null = null;
+
     dialogEl: HTMLDialogElement;
+    private textBox: HTMLInputElement;
+    private blobUrl: string;
 
     static downloadIsSupported(): boolean {
         return "download" in document.createElement("a");
@@ -34,6 +38,15 @@ export class ExportAsLocalFileDialog {
         return url;
     }
 
+    static setLastFileName(s: string | null): void {
+        // remember filename for use when saving a new file.
+        // if s is null or automatically generated then just clear out old filename.
+        if (s == null || s.startsWith("emstatic-"))
+            ExportAsLocalFileDialog.lastFileName = null;
+        else
+            ExportAsLocalFileDialog.lastFileName = s;
+    }
+
     constructor(data: string) {
         this.dialogEl = document.createElement("dialog");
         this.dialogEl.className = "exportDialog";
@@ -47,24 +60,57 @@ export class ExportAsLocalFileDialog {
         title.textContent = "Export as Local File";
         vp.appendChild(title);
 
-        const p1 = document.createElement("div");
-        p1.textContent = "Click on the link below to save your layout";
-        vp.appendChild(p1);
+        const label = document.createElement("div");
+        label.textContent = "File name:";
+        vp.appendChild(label);
 
-        const url = ExportAsLocalFileDialog.getBlobUrl(data);
-        const now = new Date();
-        const pad = (n: number) => String(n).padStart(2, "0");
-        const fname = `emstatic-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}.txt`;
-        const a = document.createElement("a");
-        a.href = url;
-        a.textContent = fname;
-        a.setAttribute("download", fname);
-        vp.appendChild(a);
+        const tb = document.createElement("input");
+        tb.type = "text";
+        tb.style.width = "250px";
+        this.textBox = tb;
+        vp.appendChild(tb);
+
+        this.blobUrl = ExportAsLocalFileDialog.getBlobUrl(data);
+
+        let fname: string;
+        if (ExportAsLocalFileDialog.lastFileName != null) {
+            fname = ExportAsLocalFileDialog.lastFileName;
+        } else {
+            const now = new Date();
+            const pad = (n: number) => String(n).padStart(2, "0");
+            fname = `emstatic-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}.txt`;
+        }
+        tb.value = fname;
+
+        const hp = document.createElement("div");
+        hp.className = "hpanel topSpace";
+        vp.appendChild(hp);
 
         const okButton = document.createElement("button");
         okButton.textContent = "OK";
-        okButton.onclick = () => this.closeDialog();
-        vp.appendChild(okButton);
+        okButton.onclick = () => {
+            this.apply();
+            this.closeDialog();
+        };
+        hp.appendChild(okButton);
+
+        const cancelButton = document.createElement("button");
+        cancelButton.textContent = "Cancel";
+        cancelButton.onclick = () => this.closeDialog();
+        hp.appendChild(cancelButton);
+    }
+
+    apply(): void {
+        let fname = this.textBox.value;
+        if (!fname.includes("."))
+            fname += ".txt";
+        ExportAsLocalFileDialog.setLastFileName(fname);
+        const a = document.createElement("a");
+        a.href = this.blobUrl;
+        a.setAttribute("download", fname);
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
     }
 
     show(): void {
