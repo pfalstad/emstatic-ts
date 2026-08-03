@@ -176,7 +176,7 @@ export class EMStatic {
     verticalPanelWidth = 0;
     chargeSource = 0;
     startLayoutText: string | null = null;
-    versionString = "1.0.1";
+    versionString = "1.1";
     calcStart = 0;
     finalSrc = 0;
 
