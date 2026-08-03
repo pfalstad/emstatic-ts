@@ -419,7 +419,23 @@ export class EMStatic {
         this.reinit();
         EMStatic.set3dViewZoom(this.zoom3d);
         this.setCanvasSize();
+        this.applyDisplayQueryParameters(qp);
         this.repaint();
+    }
+
+    // allow display settings that aren't part of the layout dump (and so wouldn't survive a
+    // dump/import round trip) to be set via URL query parameters, eg. ?dc=5&eq=0
+    applyDisplayQueryParameters(qp: QueryParameters): void {
+        const dc = qp.getValue("dc");
+        if (dc != null) {
+            const idx = parseInt(dc);
+            if (!isNaN(idx) && idx >= 0 && idx < this.displayChooser.getItemCount())
+                this.displayChooser.select(idx);
+        }
+        const eq = qp.getValue("eq");
+        if (eq != null)
+            this.equipCheck.setState(eq !== "0");
+        this.updateScrollbarVisibility();
     }
 
     // ==================== menus ====================
@@ -1256,10 +1272,17 @@ export class EMStatic {
             if (response.ok) {
                 const text = await response.text();
                 this.processSetupList(text);
-                if (this.startLayoutText == null)
-                    this.doSetup();
-                else
+                if (this.startLayoutText != null) {
                     this.readImport(this.startLayoutText);
+                } else {
+                    const exampleIdx = new QueryParameters().getValue("example");
+                    if (exampleIdx != null) {
+                        const idx = parseInt(exampleIdx);
+                        if (!isNaN(idx) && idx >= 0 && idx < this.setupChooser.getItemCount())
+                            this.setupChooser.select(idx);
+                    }
+                    this.doSetup();
+                }
             } else
                 console.log("Bad file server response:" + response.statusText);
         } catch (e) {
