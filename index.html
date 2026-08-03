@@ -1,0 +1,682 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>EMStatic</title>
+<link rel="icon" href="/favicon.ico">
+<link rel="stylesheet" href="/style.css">
+
+<script src="/glMatrix-0.9.5.min.js"></script>
+<script src="/webgl-utils.js"></script>
+<script src="/tess2.js"></script>
+
+<script id="shader-display-fs" type="x-shader/x-fragment">
+#define TS_COL_NEUTRAL 0
+#define TS_COL_MATERIAL 1
+#define TS_COL_POS 2
+#define TS_COL_NEG 3
+#define TS_COL_COUNT  4
+
+precision mediump float;
+
+varying vec2 vTextureCoord;
+varying vec4 vPosition;
+
+uniform sampler2D uSampler;
+uniform sampler2D uRightSideTexture;
+uniform float brightness;
+uniform lowp vec3 colors[TS_COL_COUNT];
+
+// shader for displaying potential (not default which is field vectors)
+void main(void) {
+    float alpha = 1.0;
+    vec4 textureColor = texture2D(uSampler, vec2(vTextureCoord.s, vTextureCoord.t));
+    vec4 rightSideColor = texture2D(uRightSideTexture, vec2(vTextureCoord.s, vTextureCoord.t));
+
+    // blue channel used to store walls/media
+    float med = rightSideColor.b;
+    float chg = rightSideColor.g;
+    vec3 zerocol = (med != 1.0 || chg != 0.0) ? colors[TS_COL_MATERIAL] : colors[TS_COL_NEUTRAL];
+    // red channel used to store potential
+    float r =  textureColor.r*brightness;
+    r = clamp(r, -1., 1.);
+    vec3 col;
+    if (r > 0.0)
+        col = mix(zerocol, colors[TS_COL_POS], r);
+    else
+        col = mix(zerocol, colors[TS_COL_NEG], -r);
+    gl_FragColor = vec4(col, 1.);
+}
+</script>
+
+<script id="shader-display-scalar-field-fs" type="x-shader/x-fragment">
+// shader for displaying ex, ey, etc
+
+#define TS_COL_NEUTRAL 0
+#define TS_COL_MATERIAL 1
+#define TS_COL_POS 2
+#define TS_COL_NEG 3
+#define TS_COL_COUNT 4
+
+precision mediump float;
+
+varying vec2 vTextureCoord;
+varying vec4 vPosition;
+
+uniform sampler2D uSampler;
+uniform sampler2D uRightSideTexture;
+uniform float stepSizeX, stepSizeY;
+uniform lowp vec3 colors[TS_COL_COUNT];
+uniform float mults[5];
+
+// calculate one part of polarization charge
+float getPCharge(vec4 ge, vec4 gp, vec4 gn) {
+  if (ge.b == gp.b || ge.b == 0.0 || gp.b == 0.0)
+    return 0.0;
+  return (ge.b-1.)*(gn.r-ge.r) - (gp.b-1.)*(ge.r-gp.r);
+}
+
+// calculate D and P with some extra work to do one-sided
+// derivatives at conductor and dielectric boundaries.
+// to calculate E: d = 0, p = -1
+// to calculate D: d = 1, p = 0
+// to calculate P: d = 1, p = 1
+float getField(vec4 ge, vec4 gp, vec4 gn) {
+  float d = mults[2];
+  float p = mults[3];
+  if (ge.b == 0.0 && gn.b != 0.0 && gp.b != 0.0)
+    return (ge.r-gn.r)*(ge.b*d-p) + (gp.r-ge.r)*(gp.b*d-p);
+  if (ge.b != gp.b)
+    return 2.*(ge.r-gn.r)*(ge.b*d-p);
+  if (ge.b != gn.b)
+    return 2.*(gp.r-ge.r)*(gp.b*d-p);
+  return (ge.r-gn.r)*(ge.b*d-p) + (gp.r-ge.r)*(gp.b*d-p);
+}
+
+void main(void) {
+  float alpha = 1.0;
+  vec4 p0 = texture2D(uSampler, vec2(vTextureCoord.s, vTextureCoord.t));
+  vec4 pa = texture2D(uSampler, vec2(vTextureCoord.s+stepSizeX, vTextureCoord.t));
+  vec4 pb = texture2D(uSampler, vec2(vTextureCoord.s-stepSizeX, vTextureCoord.t));
+  vec4 pc = texture2D(uSampler, vec2(vTextureCoord.s, vTextureCoord.t+stepSizeY));
+  vec4 pd = texture2D(uSampler, vec2(vTextureCoord.s, vTextureCoord.t-stepSizeY));
+  vec4 rightSideColor = texture2D(uRightSideTexture, vec2(vTextureCoord.s, vTextureCoord.t));
+
+  // blue channel used to store walls/media
+  float med = rightSideColor.b;
+  float chg = rightSideColor.g;
+  vec3 zerocol = (med != 1.0 || chg != 0.0) ? colors[TS_COL_MATERIAL] : colors[TS_COL_NEUTRAL];
+  // red channel used to store potential
+  float r = (mults[0]*getField(p0, pb, pa) + mults[1]*getField(p0, pd, pc));
+  r += mults[4]*(getPCharge(p0, pb, pa) + getPCharge(p0, pd, pc));
+  r = clamp(r, -1., 1.);
+  vec3 col;
+  if (r > 0.0)
+    col = mix(zerocol, colors[TS_COL_POS], r);
+  else
+    col = mix(zerocol, colors[TS_COL_NEG], -r);
+  gl_FragColor = vec4(col, 1.);
+}
+
+</script>
+
+<script id="shader-equipotential-fs" type="x-shader/x-fragment">
+    precision mediump float;
+
+    varying vec2 vTextureCoord;
+
+    uniform sampler2D uSampler;
+    uniform sampler2D uRightSideTexture;
+    uniform float stepSizeX;
+    uniform float stepSizeY;
+    uniform float brightness;
+
+    void main(void) {
+        float alpha = 1.0;
+	vec4 rs = texture2D(uRightSideTexture, vec2(vTextureCoord.s, vTextureCoord.t));
+        if (rs.b == 0.0) {
+          gl_FragColor = vec4(.25, .25, .25, 0.);
+        } else {
+          vec4 texture0 = texture2D(uSampler, vec2(vTextureCoord.s-stepSizeX, vTextureCoord.t));
+          vec4 textureS = texture2D(uSampler, vec2(vTextureCoord.s+stepSizeX, vTextureCoord.t));
+          vec4 textureA = texture2D(uSampler, vec2(vTextureCoord.s, vTextureCoord.t-stepSizeY));
+          vec4 textureT = texture2D(uSampler, vec2(vTextureCoord.s, vTextureCoord.t+stepSizeY));
+  
+	  float pot0 =  texture0.r*brightness;
+	  float potS =  textureS.r*brightness;
+	  float potT =  textureT.r*brightness;
+	  float potA =  textureA.r*brightness;
+          gl_FragColor = (floor(pot0) != floor(potS) || floor(potA) != floor(potT)) ? vec4(1., 1., 1., 1.) :
+                 vec4(1., 1., 1., rs.b != 1.0 || rs.g != 0.0 ? 0.15 : 0.0);
+       }
+    }
+</script>
+
+<script id="shader-draw-fs" type="x-shader/x-fragment">
+    precision mediump float;
+
+    //varying vec4 vPosition;
+	varying vec4 vColor;
+
+    void main(void) {
+        gl_FragColor = vColor;
+    }
+</script>
+
+<script id="shader-draw-vs" type="x-shader/x-vertex">
+    attribute vec3 aVertexPosition;
+    attribute vec4 aColor;
+
+    uniform mat4 uMVMatrix;
+    uniform mat4 uPMatrix;
+
+    varying vec4 vPosition;
+	varying vec4 vColor;
+
+    void main(void) {
+        vPosition = uMVMatrix * vec4(aVertexPosition, 1.0);
+        gl_Position = uPMatrix * vPosition;
+		vColor = aColor;
+    }
+</script>
+
+<script id="shader-view-charge-fs" type="x-shader/x-fragment">
+    varying highp vec2 vTextureCoord;
+    uniform sampler2D uSourceTexture;
+    uniform highp float brightness;
+
+    void main(void) {
+        highp vec4 tx = texture2D(uSourceTexture, vTextureCoord);
+        gl_FragColor = tx.r > 0. ? mix(vec4(.5, .5, .5, 1.), vec4(1., 1., 0., 1.), brightness*( tx.r)) :
+                                   mix(vec4(.5, .5, .5, 1.), vec4(0., 0., 1., 1.), brightness*(-tx.r));
+    }
+</script>
+
+<script id="shader-view-charge-vs" type="x-shader/x-vertex">
+    attribute vec3 aVertexPosition;
+
+    uniform mat4 uMVMatrix;
+    uniform mat4 uPMatrix;
+    uniform mat4 uTextureMatrix;
+
+    varying vec4 vPosition;
+    varying vec2 vTextureCoord;
+
+    void main(void) {
+        vPosition = uMVMatrix * vec4(aVertexPosition, 1.0);
+        gl_Position = uPMatrix * vPosition;
+        vTextureCoord = (uTextureMatrix * vec4(aVertexPosition.x, aVertexPosition.y, 0.0, 1.0)).xy;
+    }
+</script>
+
+<script id="shader-calc-charge-fs" type="x-shader/x-fragment">
+    varying highp vec2 vTextureCoord;
+    varying highp vec2 vTextureCoordUp;
+    varying highp vec2 vTextureCoordDown;
+    varying highp vec2 vTextureCoordLeft;
+    varying highp vec2 vTextureCoordRight;
+    uniform sampler2D uSourceTexture;
+
+    void main(void) {
+        highp vec4 t0 = texture2D(uSourceTexture, vTextureCoord);
+        highp vec4 tu = texture2D(uSourceTexture, vTextureCoordUp);
+        highp vec4 td = texture2D(uSourceTexture, vTextureCoordDown);
+        highp vec4 tl = texture2D(uSourceTexture, vTextureCoordLeft);
+        highp vec4 tr = texture2D(uSourceTexture, vTextureCoordRight);
+        // charge is (proportional to) difference in potential (r) times rel. permittivity (b)
+        gl_FragColor = vec4((t0.r-tu.r)*tu.b+(t0.r-td.r)*td.b+(t0.r-tl.r)*tl.b+(t0.r-tr.r)*tr.b, 0.0, 0.0, 1.0);
+    }
+</script>
+
+<script id="shader-calc-charge-vs" type="x-shader/x-vertex">
+    attribute vec3 aVertexPosition;
+
+    uniform mat4 uMVMatrix;
+    uniform mat4 uPMatrix;
+    uniform mat4 uTextureMatrix;
+
+    varying vec4 vPosition;
+    varying vec2 vTextureCoord;
+    varying vec2 vTextureCoordUp;
+    varying vec2 vTextureCoordDown;
+    varying vec2 vTextureCoordLeft;
+    varying vec2 vTextureCoordRight;
+
+    void main(void) {
+        vPosition = uMVMatrix * vec4(aVertexPosition, 1.0);
+        gl_Position = uPMatrix * vPosition;
+        vTextureCoord = (uTextureMatrix  * vec4(aVertexPosition.x, aVertexPosition.y, 0.0, 1.0)).xy;
+        vTextureCoordUp = (uTextureMatrix  * vec4(aVertexPosition.x, aVertexPosition.y+1.0, 0.0, 1.0)).xy;
+        vTextureCoordDown = (uTextureMatrix  * vec4(aVertexPosition.x, aVertexPosition.y-1.0, 0.0, 1.0)).xy;
+        vTextureCoordLeft = (uTextureMatrix  * vec4(aVertexPosition.x-1.0, aVertexPosition.y, 0.0, 1.0)).xy;
+        vTextureCoordRight = (uTextureMatrix  * vec4(aVertexPosition.x+1.0, aVertexPosition.y, 0.0, 1.0)).xy;
+    }
+</script>
+
+<script id="shader-copy-rg-fs" type="x-shader/x-fragment">
+    precision mediump float;
+
+    varying vec2 vTextureCoord;
+    uniform sampler2D uSourceTexture;
+
+void main()
+{
+     highp vec4 pv = texture2D(uSourceTexture, vTextureCoord);
+     gl_FragColor = vec4(pv.rg, 1., 1.);
+}
+
+</script>
+
+<script id="shader-copy-rgb-fs" type="x-shader/x-fragment">
+    precision mediump float;
+
+    varying vec2 vTextureCoord;
+    uniform sampler2D uSourceTexture;
+
+void main()
+{
+    highp vec4 pv = texture2D(uSourceTexture, vTextureCoord);
+    gl_FragColor = vec4(pv.rgb, 1.);
+}
+
+</script>
+
+<script id="shader-compute-edge-weights-fs" type="x-shader/x-fragment">
+    // precompute the 4 edge conductances (to the E/N/W/S neighbor vertex) from the
+    // surrounding cells' permittivity -- exactly the derivation shader-relax-fs used to
+    // do inline every single iteration.  only run at the finest grid level, where
+    // permittivity is still a per-cell rasterized scalar; coarser levels get their edge
+    // weights by restricting these (shader-restrict-edge-weights-fs), not by rederiving
+    // them from a coarsened cell map.
+    precision mediump float;
+
+    varying vec2 vTextureCoord;
+
+    uniform sampler2D uRightSideTexture;
+    uniform float stepSizeX;
+    uniform float stepSizeY;
+
+highp float getCellB(highp vec2 offset)
+{
+        highp vec4 q2 = texture2D(uRightSideTexture, offset+vTextureCoord);
+        // switch conductors to space to avoid problems with charged conductors (need a better way to fix this)
+        return q2.b > 0.0 ? q2.b : 1.0;
+}
+
+void main()
+{
+        // https://my.ece.utah.edu/~ece6340/LECTURES/Feb1/Nagel%202012%20-%20Solving%20the%20Generalized%20Poisson%20Equation%20using%20FDM.pdf
+        highp float b0 = getCellB(vec2(0., 0.));
+        highp float b3 = getCellB(vec2(-stepSizeX, 0.));
+        highp float b4 = getCellB(vec2(0., -stepSizeY));
+        highp float b5 = getCellB(vec2(-stepSizeX, -stepSizeY));
+        highp float a1 = .5*(b0+b4);
+        highp float a2 = .5*(b3+b0);
+        highp float a3 = .5*(b5+b3);
+        highp float a4 = .5*(b4+b5);
+        gl_FragColor = vec4(a1, a2, a3, a4);
+}
+
+</script>
+
+<script id="shader-restrict-edge-weights-fs" type="x-shader/x-fragment">
+    // restrict edge conductances (E/N/W/S) from a finer grid to a coarser grid by combining
+    // each direction's two fine-grid conductances via their harmonic mean -- the textbook rule
+    // for coarsening a diffusion operator's edge weights along an axis, weighting toward
+    // whichever of the two segments is the weaker link.  this decoupled (per-axis)
+    // approximation ignores the small cross-coupling to the perpendicular direction that an
+    // exact Galerkin/Schur-complement coarsening would keep (which would also turn the 5-point
+    // stencil into a 9-point one); it's the standard practical simplification used in
+    // "black-box multigrid" for jump-coefficient diffusion.
+    // NOTE: this must be the true harmonic mean (2*g1*g2/(g1+g2)), not half of it (g1*g2/(g1+g2),
+    // "resistors in series") -- these coefficients are normalized so a uniform medium gives the
+    // same weight at every resolution (the finest level is always rederived fresh from local,
+    // resolution-independent permittivity, with no explicit grid-spacing factor apart from the
+    // separate dxdy on the source term).  the series formula silently halves a uniform value at
+    // every coarsening level with nothing elsewhere compensating for it, so a0 shrinks toward
+    // zero a few levels down; dividing the (unrescaled) source term by that tiny a0 blows the
+    // coarse-grid correction up, and adding that back to the fine solution every V-cycle
+    // compounds into exponential divergence.  the harmonic mean leaves a uniform value
+    // unchanged (2*v*v/(v+v) = v), matching the old per-level rederivation exactly, while still
+    // correctly downweighting toward the weaker of the two segments when they differ.
+    // a conductor vertex still has a perfectly well-defined edge weight (computed from its
+    // surrounding cells, same as any other vertex -- computeEdgeWeights already treats a
+    // conductor CELL as free space (b=1) when deriving a neighboring vertex's weights, matching
+    // what the original per-level rederivation always did), so restriction does not need to
+    // special-case a conductor vertex here; the separate rv.b<=0 sentinel checked independently
+    // by the relax/residual shaders is what actually pins a conductor's own potential.  an
+    // earlier version of this shader hard-zeroed a coarse connection whenever the fine vertex
+    // being eliminated in the middle of the chain was a conductor -- that had no counterpart in
+    // the original scheme and was the source of a conductor-only divergence, so it's gone.
+    precision mediump float;
+
+    varying vec2 vTextureCoord;
+
+    uniform sampler2D uSourceEdgeWeights;
+    uniform float stepSizeX;
+    uniform float stepSizeY;
+
+highp float harmonicMean(highp float g1, highp float g2)
+{
+    return (g1+g2 > 0.0) ? 2.0*(g1*g2)/(g1+g2) : 0.0;
+}
+
+void main()
+{
+    highp vec4 ew0 = texture2D(uSourceEdgeWeights, vTextureCoord);
+    highp vec4 ewE = texture2D(uSourceEdgeWeights, vTextureCoord+vec2(stepSizeX, 0.));
+    highp vec4 ewW = texture2D(uSourceEdgeWeights, vTextureCoord+vec2(-stepSizeX, 0.));
+    highp vec4 ewN = texture2D(uSourceEdgeWeights, vTextureCoord+vec2(0., stepSizeY));
+    highp vec4 ewS = texture2D(uSourceEdgeWeights, vTextureCoord+vec2(0., -stepSizeY));
+
+    highp float a1 = harmonicMean(ew0.r, ewE.r);
+    highp float a2 = harmonicMean(ew0.g, ewN.g);
+    highp float a3 = harmonicMean(ew0.b, ewW.b);
+    highp float a4 = harmonicMean(ew0.a, ewS.a);
+
+    gl_FragColor = vec4(a1, a2, a3, a4);
+}
+
+</script>
+
+<script id="shader-relax-fs" type="x-shader/x-fragment">
+    // perform one half-sweep of red-black Gauss-Seidel relaxation: this updates only the
+    // cells of one checkerboard color (parity, 0 or 1) and leaves the other color's cells
+    // unchanged, so the caller alternates parity 0/1 to perform one full sweep.  red-black
+    // Gauss-Seidel converges substantially faster than plain Jacobi (which this replaced),
+    // especially for high dielectric contrast, because the second half-sweep already sees
+    // the freshly updated values from the first half rather than an entirely lagged texture.
+    // edge conductances come precomputed from uEdgeWeights (see shader-compute-edge-weights-fs
+    // and shader-restrict-edge-weights-fs) instead of being rederived from neighbor cells here.
+    precision mediump float;
+
+    varying vec2 vTextureCoord;
+    varying vec4 vPosition;
+
+    uniform sampler2D uSourceTexture;
+    uniform sampler2D uRightSideTexture;
+    uniform sampler2D uEdgeWeights;
+    uniform float stepSizeX;
+    uniform float stepSizeY;
+    uniform float parity;
+
+void main()
+{
+        highp vec4 sv = texture2D(uSourceTexture, vTextureCoord);
+        highp vec4 rv = texture2D(uRightSideTexture, vTextureCoord);
+
+        highp float cellParity = mod(floor(gl_FragCoord.x) + floor(gl_FragCoord.y), 2.0);
+        if (abs(cellParity - parity) > 0.5) {
+            // not this half-sweep's color: leave this cell as it was
+            gl_FragColor = vec4(sv.r, 0., rv.b, 1.);
+            return;
+        }
+
+    	highp float newpot = 0.;
+        if (rv.b > 0.0) {
+          highp vec4 ew = texture2D(uEdgeWeights, vTextureCoord);
+          highp float potE = texture2D(uSourceTexture, vTextureCoord+vec2(stepSizeX, 0.)).r;
+          highp float potN = texture2D(uSourceTexture, vTextureCoord+vec2(0., stepSizeY)).r;
+          highp float potW = texture2D(uSourceTexture, vTextureCoord+vec2(-stepSizeX, 0.)).r;
+          highp float potS = texture2D(uSourceTexture, vTextureCoord+vec2(0., -stepSizeY)).r;
+          highp float a0 = ew.r + ew.g + ew.b + ew.a;
+          newpot = (a0 > 0.0) ?
+              (ew.r*potE + ew.g*potN + ew.b*potW + ew.a*potS + rv.g*stepSizeX*stepSizeY)/a0 : sv.r;
+        } else
+	  newpot = rv.g;  // conductor
+        gl_FragColor = vec4(newpot, 0., rv.b, 1.);
+}
+
+</script>
+
+<script id="shader-residual-fs" type="x-shader/x-fragment">
+    // calculate residual, using the same precomputed edge conductances as shader-relax-fs
+    precision mediump float;
+
+    varying vec2 vTextureCoord;
+    varying vec4 vPosition;
+
+    uniform sampler2D uSourceTexture;
+    uniform sampler2D uRightSideTexture;
+    uniform sampler2D uEdgeWeights;
+    uniform float stepSizeX;
+    uniform float stepSizeY;
+
+void main()
+{
+    	highp float newpos = 0.;
+        highp vec4 pv = texture2D(uSourceTexture, vTextureCoord);
+        highp vec4 rv = texture2D(uRightSideTexture, vTextureCoord);
+        if (rv.b > 0.0) {
+          highp float pos = pv.r;
+          highp vec4 ew = texture2D(uEdgeWeights, vTextureCoord);
+          highp float potE = texture2D(uSourceTexture, vTextureCoord+vec2(stepSizeX, 0.)).r;
+          highp float potN = texture2D(uSourceTexture, vTextureCoord+vec2(0., stepSizeY)).r;
+          highp float potW = texture2D(uSourceTexture, vTextureCoord+vec2(-stepSizeX, 0.)).r;
+          highp float potS = texture2D(uSourceTexture, vTextureCoord+vec2(0., -stepSizeY)).r;
+          highp float a0 = ew.r + ew.g + ew.b + ew.a;
+          if (a0 > 0.0) {
+            highp float newpot = (ew.r*potE + ew.g*potN + ew.b*potW + ew.a*potS + rv.g*stepSizeX*stepSizeY)/a0;
+            // scale by the actual a0 (not a hardcoded vacuum value of 4) so this residual is
+            // dimensionally consistent when fed back in as a right-hand side at any permittivity
+            newpos = a0/(stepSizeX*stepSizeY) * (newpot - pos);
+          }
+        }
+        gl_FragColor = vec4(0.0, newpos, rv.b, 1.);
+}
+
+</script>
+
+<script id="shader-sum-fs" type="x-shader/x-fragment">
+    precision mediump float;
+
+    varying vec2 vTextureCoord;
+    varying vec4 vPosition;
+
+    uniform sampler2D uSourceTexture;
+    uniform float stepSizeX;
+    uniform float stepSizeY;
+
+highp vec4 getAdjacentCell(highp vec2 offset)
+{
+        highp vec2 x = offset+vTextureCoord;
+	return texture2D(uSourceTexture, x);
+}
+
+void main()
+{
+    	highp float newpos = 0.;
+        highp vec4 pv = texture2D(uSourceTexture, vTextureCoord);
+        highp vec4 mid1 = getAdjacentCell(vec2(stepSizeX, 0.));
+        highp vec4 mid2 = getAdjacentCell(vec2(0., stepSizeY));
+        highp vec4 mid3 = getAdjacentCell(vec2(stepSizeX, stepSizeY));
+        gl_FragColor = vec4(pv.r + mid1.r + mid2.r + mid3.r, 0.0, 1., 1.);
+}
+
+</script>
+
+<script id="shader-add-mult-fs" type="x-shader/x-fragment">
+    precision mediump float;
+
+    varying vec2 vTextureCoord;
+    varying vec4 vPosition;
+
+    uniform sampler2D uSourceTexture;
+    uniform sampler2D uRightSideTexture;
+    uniform vec4 mult;
+
+void main()
+{
+        highp vec4 pv = texture2D(uSourceTexture, vTextureCoord);
+        highp vec4 rv = texture2D(uRightSideTexture, vTextureCoord);
+        //gl_FragColor = vec4(pv.r+rv.r, pv.g+rv.g, rv.b, 1.0);
+        gl_FragColor = vec4(pv.r+rv.r*mult.r+rv.g*mult.a, pv.g+rv.g*mult.g, pv.b+rv.b*mult.b, 1.0);
+}
+
+</script>
+
+<script id="shader-vs" type="x-shader/x-vertex">
+    attribute vec3 aVertexPosition;
+    attribute vec2 aTextureCoord;
+
+    uniform mat4 uMVMatrix;
+    uniform mat4 uPMatrix;
+
+    varying vec2 vTextureCoord;
+    varying vec4 vPosition;
+
+
+    void main(void) {
+        vPosition = uMVMatrix * vec4(aVertexPosition, 1.0);
+        gl_Position = uPMatrix * vPosition;
+        vTextureCoord = aTextureCoord;
+    }
+</script>
+
+<script id="shader-3d-vs" type="x-shader/x-vertex">
+#define TS_COL_NEUTRAL 0
+#define TS_COL_MATERIAL 1
+#define TS_COL_POS 2
+#define TS_COL_NEG 3
+#define TS_COL_COUNT  4
+
+    attribute highp vec2 aTextureCoord;
+    uniform mat4 uMVMatrix;
+    uniform mat4 uPMatrix;
+    uniform mat4 uNormalMatrix;
+    uniform highp float xOffset;
+
+    varying vec2 vTextureCoord;
+    //varying vec4 vPosition;
+    varying vec4 vColor;
+    uniform sampler2D uSampler;
+    uniform float brightness;
+    uniform lowp vec3 colors[TS_COL_COUNT];
+
+    void main(void) {
+        highp float zscale = .1;
+	highp vec2 tc  = vec2(aTextureCoord.x+xOffset, aTextureCoord.y);
+        vec4 pv = texture2D(uSampler, tc);
+	float r =  pv.r*brightness;
+        vec4 vPosition = uMVMatrix * vec4(-1.0+2.0*tc.x, -1.0+2.0*tc.y, r*zscale, 1.0);
+        gl_Position = uPMatrix * vPosition;
+        vTextureCoord = tc;
+
+        // blue channel used to store walls/media
+        float med = 1.0;
+        vec3 zerocol = (med != 1.0) ? colors[TS_COL_MATERIAL] : colors[TS_COL_NEUTRAL];
+        // red channel used to store potential
+        r = clamp(r, -1., 1.);
+        vec3 col;
+        if (r > 0.0)
+            col = mix(zerocol, colors[TS_COL_POS], r);
+        else
+            col = mix(zerocol, colors[TS_COL_NEG], -r);
+
+	// calculate normal
+	float qx = texture2D(uSampler, vec2(aTextureCoord.x+xOffset+1./200., aTextureCoord.y)).r-pv.r;
+	float qy = texture2D(uSampler, vec2(aTextureCoord.x+xOffset, aTextureCoord.y+1./200.)).r-pv.r;
+	qx *= brightness*2./zscale;  qy *= brightness*2./zscale;
+
+	// calculate lighting
+	float normdot = max(dot(uNormalMatrix*vec4(qx, qy, -1., 1.), vec4(1., 0., -1., 0.))/length(vec3(qx, qy, -1.)), 0.0);
+
+	// not sure why we need this clamp here but it doesn't work otherwise
+	col = clamp(col, 0., 1.) + vec3(1., 1., 1.)*normdot*.6;
+        vColor = vec4(col, 1.);
+    }
+</script>
+
+<script id="shader-3d-fs" type="x-shader/x-fragment">
+    precision mediump float;
+
+    varying vec2 vTextureCoord;
+    varying vec4 vColor;
+
+    uniform sampler2D uSampler;
+    uniform sampler2D uRightSideTexture;
+    uniform float stepSizeX;
+    uniform float stepSizeY;
+    uniform highp float equipMult;
+
+    void main(void) {
+        float alpha = 1.0;
+	vec4 rs = texture2D(uRightSideTexture, vec2(vTextureCoord.s, vTextureCoord.t));
+        if (rs.b == 0.0) {
+          gl_FragColor = vec4(.5, .5, .5, 1.);
+        } else {
+          vec4 texture0 = texture2D(uSampler, vec2(vTextureCoord.s-stepSizeX, vTextureCoord.t));
+          vec4 textureS = texture2D(uSampler, vec2(vTextureCoord.s+stepSizeX, vTextureCoord.t));
+          vec4 textureA = texture2D(uSampler, vec2(vTextureCoord.s, vTextureCoord.t-stepSizeY));
+          vec4 textureT = texture2D(uSampler, vec2(vTextureCoord.s, vTextureCoord.t+stepSizeY));
+  
+	  float pot0 =  texture0.r*equipMult;
+	  float potS =  textureS.r*equipMult;
+	  float potT =  textureT.r*equipMult;
+	  float potA =  textureA.r*equipMult;
+          gl_FragColor = (floor(pot0) != floor(potS) || floor(potA) != floor(potT)) ? vec4(1., 1., 1., 1.) : vColor;
+       }
+    }
+</script>
+
+<script id="shader-field-vector-vs" type="x-shader/x-vertex">
+
+attribute highp vec2 aVertexPosition;
+uniform sampler2D uSampler;
+varying vec4 vColor;
+uniform float stepSizeX;
+uniform float stepSizeY;
+uniform float brightness;
+varying mat2 vMatrix;
+uniform mat3 uTextureMatrix;
+uniform float uEMult, uPMult, pointSize;
+
+highp vec4 getAdjacentCell(highp vec2 coords, highp float offsetX, highp float offsetY) {
+  return texture2D(uSampler, (uTextureMatrix * vec3(coords.x+offsetX, coords.y+offsetY, 1.0)).xy);
+}
+
+void main() {
+  highp vec4 pa = getAdjacentCell(aVertexPosition,  stepSizeX, 0.);
+  highp vec4 pb = getAdjacentCell(aVertexPosition, -stepSizeX, 0.);
+  highp vec4 pc = getAdjacentCell(aVertexPosition, 0.,  stepSizeY);
+  highp vec4 pd = getAdjacentCell(aVertexPosition, 0., -stepSizeY);
+  highp vec4 p0 = getAdjacentCell(aVertexPosition, 0., 0.);
+  vec2 grad = -vec2(pb.r-pa.r, pc.r-pd.r);
+  float len = length(grad);
+  if (len < 1e-8) {
+    grad = vec2(1.0, 0.0);
+  }
+  float col = len*brightness*10.0;
+  float mult = 1./len;
+  col *= (uEMult+uPMult*(p0.b-1.));
+  vColor = col > 1.0 ? vec4(col-1.0, 1.0, col-1.0, 1.0) : vec4(0.0, 1.0, 0.0, col);
+  vMatrix = mat2(grad.y*mult, grad.x*mult, -grad.x*mult, grad.y*mult);
+  gl_Position = vec4(aVertexPosition.xy, 0.0, 1.0);
+  gl_PointSize = pointSize;
+  
+}
+
+</script>
+
+<script id="shader-field-vector-fs" type="x-shader/x-fragment">
+
+varying highp vec4 vColor;
+varying highp mat2 vMatrix;
+uniform sampler2D uArrowTexture;
+
+void main() {
+  highp vec2 pc = gl_PointCoord;
+  pc = vMatrix*(pc-vec2(0.5, 0.5)) + vec2(0.5, 0.5);
+  highp vec4 samp = texture2D(uArrowTexture, pc);
+  gl_FragColor = vec4(samp.rgba * vColor);
+}
+
+</script>
+
+<script src="/emstatic.js"></script>
+</head>
+<body>
+<div id="app"></div>
+<script type="module" src="/main.ts"></script>
+</body>
+</html>
